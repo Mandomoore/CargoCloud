@@ -1,5 +1,7 @@
 # CargoCloud
-CargoCloud is a customized Integrated Logistics Platform GUI under development. Allows for the integration of various Logistics platforms for quicker and more seamless data aggregation. Please note that this application is in its infancy. 
+CargoCloud is a customized Integrated Logistics Platform GUI under development. Allows for the integration of various Logistics platforms for quicker and more seamless data aggregation. 
+
+Please note that this application is in its infancy. 
 
 Features to come:
   More Lane Analysis tools
