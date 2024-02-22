@@ -7,7 +7,7 @@ Currently the flagship feature of this application is the CarrierCloud Database.
   Easily search and find carriers in the database
     Search by zip allows you to put in a zip code and range and find any stored carrier's within that radius (up to 625 miles)
     
-  Local Carrier Ratings  
+  Local Carrier Ratings 
     These ratings are input by the user and track a carrier's past performance for your shipments.
 
 Please note that this application is in its infancy. 
