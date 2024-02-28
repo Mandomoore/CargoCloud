@@ -3,7 +3,6 @@ import tkinter as tk
 from tkinter import *
 from tkinter import ttk, messagebox
 import pandas as pd
-import csv
 import os
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -15,6 +14,8 @@ from collections import deque
 from bs4 import BeautifulSoup
 import sqlite3
 from PIL import Image, ImageTk
+from modules import zip_search
+
 
 conn = sqlite3.connect('carrier-data/cargo_cloud.db')
 cursor = conn.cursor()
@@ -22,6 +23,7 @@ cursor = conn.cursor()
 lane_url = []
 
 # Create the main window
+
 root = tk.Tk()
 root.title('CargoCloud')
 screen_width = root.winfo_screenwidth()
@@ -68,14 +70,12 @@ commodity_label.grid(column=0, row=4, padx=5, pady=5, sticky='w')
 commodity_dropdown.grid(column=1, row=4, padx=5, pady=5)
 
 # Get the input values from the GUI
-
 def autofill_zip(zipcode):
     search = SearchEngine()
     zipcode_data = search.by_zipcode(zipcode)
     city = zipcode_data.major_city
     state = zipcode_data.state_abbr
     return f"{zipcode}, {city}, {state}"
-
 
 def run_ra():
 
@@ -91,18 +91,20 @@ def run_ra():
     # Open a Chrome browser to a specific URL
     driver = webdriver.Chrome()
     driver.get('https://rates.truckstop.com/')
-    time.sleep(1)
+    time.sleep(5)
 
     # Credentials
     username_input = driver.find_element("id", 'UserName')
     username_input.send_keys(username)
+    time.sleep(2)
     pwrd_input = driver.find_element("id", 'Password')
     pwrd_input.send_keys(pwrd)
+    time.sleep(2)
     login = driver.find_element("xpath", '/html/body/div/div[1]/div[1]/form/div/div[2]/div[1]/input')
     login.click()
     #    cancel_click = driver.find_element("xpath", '/html/body/div[1]/div/div/div/div[3]/input[2]')
     #    cancel_click.click()
-    time.sleep(.5)
+    time.sleep(10)
 
     # Autofill the origin input
     origin_zip = origin.split(',')[0].strip()
@@ -157,31 +159,41 @@ di_submit_button.grid(column=0, row=5, columnspan=2, padx=5, pady=5)
 CarrierCloud_tab = ttk.Frame(tab_control)
 tab_control.add(CarrierCloud_tab, text='CarrierCloud')
 
-#Buttons---------------------------
-#Add carrier button
+#Buttons-----------------------------------------
+#Add Carrier Button
 AddButton = Button(CarrierCloud_tab, text="Add Carrier", command=lambda: add_carrier_popup())
 AddButton.grid(column=0, row=0)
+
 #Refresh Button
 script_dir = os.path.dirname(os.path.abspath(__file__))
 img_path = os.path.join(script_dir, "config", "refresh.png")
 original_image = Image.open(img_path)
 resized_image = original_image.resize((25, 25), Image.ANTIALIAS if hasattr(Image, 'ANTIALIAS') else Image.BICUBIC)
 refresh_img = ImageTk.PhotoImage(resized_image)
-RefreshButton = tk.Button(CarrierCloud_tab, image=refresh_img, text="Refresh", command=lambda: update_carrier_table())
-RefreshButton.grid(column=0, row=0, sticky='e')
+RefreshButton_frame = ttk.Frame(CarrierCloud_tab)
+RefreshButton = tk.Button(RefreshButton_frame, image=refresh_img, text="Refresh", command=lambda: update_carrier_table())
+RefreshButton_frame.grid(column=0, row=0, sticky='e')
+RefreshButton.grid(column=1, row=0, sticky='e')
+
+#View Profile Button
+view_profile_button = Button(RefreshButton_frame, text="View Profile", command=lambda: view_profile(cc_table.item(cc_table.selection())['values'][0]))
+view_profile_button.grid(column=0, row=0, sticky='w')
+
 #Search Entry & Search Button
 search_frame = ttk.Frame(CarrierCloud_tab)
 search_frame.grid(row=0, column=0, padx=5, pady=5, sticky='w')
+search_dropdown = ttk.Combobox(search_frame, values=["All", "Zip Code ('zipcode:miles')", "Insurance ('amount')"])
+search_dropdown.set("All")
 search_label = ttk.Label(search_frame, text="Search:")
 search_entry = ttk.Entry(search_frame)
 search_button = ttk.Button(search_frame, text="Search", command=lambda: search_carrier())
-search_label.grid(column=0, row=0, padx=5, pady=5, sticky='w')
-search_entry.grid(column=1, row=0, padx=5, pady=5, sticky='w')
-search_button.grid(column=2, row=0, padx=5, pady=5, sticky='w')
+search_dropdown.grid(column=0, row=0, padx=5, pady=5, sticky='w')
+search_label.grid(column=1, row=0, padx=5, pady=5, sticky='w')
+search_entry.grid(column=2, row=0, padx=5, pady=5, sticky='w')
+search_button.grid(column=3, row=0, padx=5, pady=5, sticky='w')
 
 
-
-#Carrier Table---------------------
+#Carrier Table-------------------------------------
 cc_table_height = 30
 
 CC_Columns = ['MC#', 'Carrier Name', 'Phone Number', 'Homebase Zip', 'Equip Len', 'Equip Type',
@@ -226,14 +238,12 @@ cc_table.heading("Equip Type", text="Equip Type")
 cc_table['show'] = 'headings'
 cc_table.grid(row=1, column=0, padx=5, pady=5, ipadx=0)
 
-
-
 def on_select(event):
     selected = event.widget.get()
     print(selected)
 
 def calculate_weighted_total_rating(english, communication, reachability, punctuality, macropoint, blacklist):
-    return english * 0.15 + communication * 0.15 + reachability * 0.30 + punctuality * 0.30 + macropoint * 0.10 + blacklist * -100
+    return english * 0.15 + communication * 0.15 + reachability * 0.30 + punctuality * 0.30 + macropoint * 1 + blacklist * -100
 
 def update_carrier_table():
     cc_table.delete(*cc_table.get_children())  # Clear existing entries in the table
@@ -252,7 +262,8 @@ def update_carrier_table():
     data = cursor.fetchall()
 
     # Sort the data by Rating (average_rating)
-    data.sort(key=lambda x: x[-1], reverse=True)
+    # data.sort(key=lambda x: x[-1], reverse=True)
+    data.sort(key=lambda x: x[-1] if x[-1] is not None else float('-inf'), reverse=True)
 
     for row in data:
         (mc_number, carrier_name, phone_number, homebase_zip, equip_length, equip_type, insurance_amount, role, hazmat,
@@ -297,7 +308,7 @@ def cc_right_click(event):
         rc_menu.add_command(label="Cancel")
         rc_menu.post(event.x_root, event.y_root)
 
-#Carrier Rating Window & Logic#######################
+#Carrier Rating Window & Logic-----------------------------
 def rate_carrier(mc_number):
     rate_popup = tk.Toplevel(root)
     rate_popup.title(f"Rate Carrier {mc_number}")
@@ -375,7 +386,6 @@ def rate_carrier(mc_number):
 
     submit_button = tk.Button(rate_popup, text="Submit Rating", command=submit_rating)
     submit_button.grid(row=7, column=0, columnspan=2, pady=5)
-
 
 def confirm_delete_carrier(mc_number):
     confirmation = messagebox.askyesno("Confirmation", f"Do you want to delete the carrier with MC #: {mc_number}")
@@ -483,21 +493,23 @@ def add_carrier_popup():
         note = note_entry.get("1.0", tk.END).strip()
 
         # Apply formatting to the values
-        formatted_phone1 = f"({phone1[:3]}) {phone1[3:6]}-{phone1[6:]}"
-        formatted_phone2 = f"({phone2[:3]}) {phone2[3:6]}-{phone2[6:]}"
+        updated_phone1 = ''.join(filter(str.isdigit, phone1))
+        formatted_phone1 = f"({updated_phone1[:3]}) {updated_phone1[3:6]}-{updated_phone1[6:]}"
+        updated_phone2 = ''.join(filter(str.isdigit, phone2))
+        formatted_phone2 = f"({updated_phone2[:3]}) {updated_phone2[3:6]}-{updated_phone2[6:]}"
         formatted_equip_len = f"{equip_len}' "
         formatted_insurance = f"${int(insurance):,}"
-        # Name Formatting
         name_parts = carrier_name.split(' ')
         first_name = name_parts[0].capitalize()
         last_name = ' '.join([name_part.capitalize() for name_part in name_parts[1:]])
+        formatted_name = f"{first_name} {last_name}"
+        # Handle the exception for "RGN" equipment type
         if equip_type.upper() == "RGN":
             formatted_equip_len = f"{equip_len}\" "
         else:
             formatted_equip_len = f"{equip_len}' "
 
         # Combine the formatted first and last name
-        formatted_name = f"{first_name} {last_name}"
 
         # Create a dictionary with the values
         data = {'MC #': mc_number,
@@ -518,7 +530,7 @@ def add_carrier_popup():
                     equip_length, equip_type, insurance_amount, role, hazmat, us_citizen)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (mc_number, formatted_name, formatted_phone1, home_zip, formatted_equip_len, equip_type,
-                    formatted_insurance, role, hazmat, citizen ))
+                      formatted_insurance, role, hazmat, citizen ))
             cursor.execute('''
                     INSERT INTO carrier_notes (mc_number, note)
                     VALUES (?, ?)
@@ -542,7 +554,7 @@ def add_carrier_popup():
     submit_button.grid(row=21, column=1, padx=5, pady=5, sticky='s')
 
 
-#EDIT CARRIER INFORMATION##############################
+#EDIT CARRIER INFORMATION-----------------------------
 def edit_carrier_info(mc_number):
     # role_options = ['Driver', 'Dispatch', 'Owner/Op']
 
@@ -716,60 +728,186 @@ def edit_carrier_info(mc_number):
     submit_button.grid(row=21, column=1, padx=5, pady=5, sticky='s')
 
 
+
+
+
+
+
+
+
+
+
+
+#View Profile----------------------------------------
+def view_profile(mc_number):
+    profile_popup = tk.Toplevel(root)
+    profile_popup.geometry("1500x1000")
+
+    # Fetch data from carrier_info table
+    cursor.execute('SELECT * FROM carrier_info WHERE mc_number = ?', (mc_number,))
+    current_data = cursor.fetchone()
+
+    # Fetch data from carrier_phone2 table
+    cursor.execute('SELECT phone2 FROM carrier_phone2 WHERE mc_number = ?', (mc_number,))
+    carrier_phone2 = cursor.fetchone()
+
+    # Fetch data from carrier_notes table
+    cursor.execute('SELECT note FROM carrier_notes WHERE mc_number = ?', (mc_number,))
+    existing_note = cursor.fetchone()
+
+    # Fetch data from carrier_rating table
+    cursor.execute('SELECT * FROM carrier_rating WHERE mc_number = ?', (mc_number,))
+    carrier_rating_data = cursor.fetchall()
+
+    # Title for the popup
+    profile_popup.title(f"{current_data[1]} - MC#{mc_number}")
+
+    # Entry fields for carrier_info
+    tk.Label(profile_popup, text="MC #:").grid(row=0, column=0, padx=5, pady=5)
+    mc_entry = tk.Entry(profile_popup)
+    mc_entry.insert(0, current_data[0])
+    mc_entry.grid(row=0, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Carrier Name:").grid(row=1, column=0, padx=5, pady=5)
+    name_entry = tk.Entry(profile_popup)
+    name_entry.insert(0, current_data[1])
+    name_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Phone Number 1:").grid(row=2, column=0, padx=5, pady=5)
+    phone1_entry = tk.Entry(profile_popup)
+    phone1_entry.insert(0, current_data[2])
+    phone1_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Phone Number 2:").grid(row=3, column=0, padx=5, pady=5)
+    phone2_entry = tk.Entry(profile_popup)
+    phone2_entry.insert(0, carrier_phone2[0] if carrier_phone2 else "")
+    phone2_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Homebase Zip:").grid(row=4, column=0, padx=5, pady=5)
+    home_zip = tk.Entry(profile_popup)
+    home_zip.insert(0, current_data[3])
+    home_zip.grid(row=4, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Equipment Length:").grid(row=5, column=0, padx=5, pady=5)
+    equip_len_entry = tk.Entry(profile_popup)
+    equip_len_entry.insert(0, current_data[4])
+    equip_len_entry.grid(row=5, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Equipment Type:").grid(row=6, column=0, padx=5, pady=5)
+    equip_type_entry = ttk.Combobox(profile_popup, values=equip_options)
+    equip_type_entry.insert(0, current_data[5])
+    equip_type_entry.grid(row=6, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Insurance Coverage Amount:").grid(row=7, column=0, padx=5, pady=5)
+    ins_entry = tk.Entry(profile_popup)
+    ins_entry.insert(0, current_data[6])
+    ins_entry.grid(row=7, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Role:").grid(row=8, column=0, padx=5, pady=5)
+    role_entry = ttk.Combobox(profile_popup, values=role_options)
+    role_entry.insert(0, current_data[7])
+    role_entry.grid(row=8, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="Hazmat Endorsement?:").grid(row=9, column=0, padx=5, pady=5)
+    haz_var = tk.BooleanVar()
+    haz_value = current_data[8]
+    haz_var.set(haz_value == "Yes")
+    haz_entry = ttk.Checkbutton(profile_popup, variable=haz_var, offvalue="No")
+    haz_entry.grid(row=9, column=1, padx=5, pady=5, sticky='w')
+
+    tk.Label(profile_popup, text="U.S. Citizen?:").grid(row=10, column=0, padx=5, pady=5)
+    us_cit = tk.BooleanVar()
+    cit_val = current_data[9]
+    us_cit.set(cit_val == "Yes")
+    us_cit_entry = ttk.Checkbutton(profile_popup, variable=us_cit, offvalue="No")
+    us_cit_entry.grid(row=10, column=1, padx=5, pady=5, sticky='w')
+
+    note_frame = ttk.Frame(profile_popup)
+    # note_frame.grid(column=3, row=1)
+    tk.Label(note_frame, text="Notes:").grid(row=1, column=3, padx=5, pady=5)
+    note_entry = tk.Text(note_frame, height=10, width=80, font=('Calibri', 10))
+    note_entry.insert(tk.END, existing_note[0] if existing_note else "")
+    note_entry.grid(row=1, column=4, padx=5, pady=5, sticky='w')
+
+    # Table for carrier ratings
+    rating_frame = ttk.Frame(profile_popup)
+    rating_frame.grid(column=1, row=1)
+    rating_table_height = 10
+    Rating_Columns = ['Pro #', 'English', 'Communication', 'Reachability', 'Punctuality', 'MacroPoint', 'Blacklist', 'Total Rating']
+    rating_table = ttk.Treeview(rating_frame, columns=Rating_Columns, show='headings', height=rating_table_height)
+
+    # Set column weights for rating_table
+    for col in Rating_Columns:
+        rating_table.column(col, anchor=tk.CENTER)
+        rating_table.heading(col, text=col)
+
+    # Configure column weights for rating_table
+    for col in Rating_Columns:
+        rating_frame.grid_columnconfigure(Rating_Columns.index(col), weight=1)
+
+    # Function to update the rating table based on the selected carrier
+    def update_rating_table():
+        # Clear existing entries in the rating table
+        rating_table.delete(*rating_table.get_children())
+
+        # Fetch rating data for the selected carrier
+        for row in carrier_rating_data:
+            pro_number, english, communication, reachability, punctuality, macropoint, blacklist, total_rating = row
+
+            # Set a tag for each row based on the blacklist condition
+            tag = 'red' if blacklist else ''
+
+            rating_table.insert('', 'end', values=(pro_number, english, communication, reachability, punctuality,
+                                                   macropoint, blacklist, f"{total_rating:.2f}"), tags=(tag,))
+            rating_table.tag_configure('red', foreground='red')
+
+    # Call the function to populate the rating table
+    update_rating_table()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # SEARCH BAR/LOGIC -------------------------------------------------
-def search_by_zip_and_distance(search_query):
-    # Split the search query into ZIP code and distance
-    zip_and_distance = search_query.split(':')
-
-    if len(zip_and_distance) != 2:
-        print("Invalid format. Please enter ZIP code followed by colon and distance.")
-        return
-
-    zip_code, distance = zip_and_distance
-    try:
-        distance = int(distance)
-    except ValueError:
-        print("Invalid distance value. Please enter a valid integer.")
-        return
-
-    # Use uszipcode library to get nearby ZIP codes
-    search = SearchEngine(simple_zipcode=True)
-    zip_info = search.by_zipcode(zip_code)
-
-    if not zip_info:
-        print("Invalid ZIP code. Please enter a valid ZIP code.")
-        return
-
-    nearby_zipcodes = search.by_coordinates(zip_info.latitide, zip_info.longitude, radius=distance)
-
-    # Now you can use the list of nearby ZIP codes to query your database
-    # Example:
-    cursor.execute('''
-        SELECT * FROM carrier_info 
-        WHERE homebase_zip IN ({})
-    '''.format(','.join(['"{}"'.format(zip_info.zipcode) for zip_info in nearby_zipcodes])))
-
-    data = cursor.fetchall()
+warning_label = Label(search_frame, text="Please allow up to 30 seconds...", fg="blue")
+def clear_label_text():
+    warning_label.config(text="")
 
 def search_carrier():
+    selected_option = search_dropdown.get()
     search_query = search_entry.get().lower()  # Get the search query and convert to lowercase for case-insensitive search
-
-    # Clear existing entries in the table
+    # search_query = ''.join(filter(str.isdigit, search_query))
     cc_table.delete(*cc_table.get_children())
-
-    if search_query.startswith("zipcode:"):
-        search_by_zip_and_distance(search_query[len("zipcode:"):])
-        return
-    elif search_query == "hazmat":
-        cursor.execute('SELECT * FROM carrier_info WHERE hazmat = "Yes"')
-    elif search_query == "citizen":
-        cursor.execute('SELECT * FROM carrier_info WHERE us_citizen = "Yes"')
-    elif search_query == "phone2":
-        cursor.execute('SELECT * FROM carrier_phone2 WHERE lower(phone2) LIKE ?', ('%' + search_query + '%',))
-    else:
-        cursor.execute('''
+    if selected_option == "All":
+        if search_query == "hazmat":
+            cursor.execute('SELECT * FROM carrier_info WHERE hazmat = "Yes"')
+        elif search_query == "citizen":
+            cursor.execute('SELECT * FROM carrier_info WHERE us_citizen = "Yes"')
+        else:
+            cursor.execute('''
                 SELECT * FROM carrier_info 
                 WHERE 
+                    mc_number IN (
+                        SELECT mc_number FROM carrier_phone2 WHERE lower(phone2) LIKE ?
+                    ) OR
                     lower(mc_number) LIKE ? OR 
                     lower(carrier_name) LIKE ? OR 
                     lower(phone_number) LIKE ? OR
@@ -780,52 +918,125 @@ def search_carrier():
                     lower(role) LIKE ? OR
                     lower(hazmat) LIKE ? OR
                     lower(us_citizen) LIKE ?
-            ''', tuple(['%' + search_query + '%'] * 10))  # Use tuple to repeat the search query for each column
+            ''', tuple(['%' + search_query + '%'] * 11)) # Use tuple to repeat the search query for each column
 
-    data = cursor.fetchall()
+            data = cursor.fetchall()
 
-    # Sort the data by Rating (average_rating)
-    data.sort(key=lambda x: x[-1], reverse=True)
+            # Clear existing entries in the table
+            cc_table.delete(*cc_table.get_children())
 
-    # Repopulate the GUI table with the fetched data
-    for row in data:
-        (mc_number, carrier_name, phone_number, homebase_zip, equip_length, equip_type, insurance_amount, role, hazmat,
-         us_citizen, average_rating) = row
+            # Sort the data by Rating (average_rating)
+            data.sort(key=lambda x: x[-1], reverse=True)
 
-        # Check if average_rating is None and provide a default value
-        average_rating = average_rating if average_rating is not None else 0.0
+            # Repopulate the GUI table with the fetched data
+            for row in data:
+                (mc_number, carrier_name, phone_number, homebase_zip, equip_length, equip_type, insurance_amount, role,
+                 hazmat,
+                 us_citizen, average_rating) = row
 
-        # Check if mc_number is in the blacklist
-        cursor.execute("SELECT COUNT(*) FROM blacklist WHERE mc_number = ?", (mc_number,))
-        is_blacklisted = cursor.fetchone()[0]
+                # Check if average_rating is None and provide a default value
+                average_rating = average_rating if average_rating is not None else 0.0
 
-        # Set a tag for each row based on the blacklist condition
-        tag = 'red' if is_blacklisted else ''
+                # Check if mc_number is in the blacklist
+                cursor.execute("SELECT COUNT(*) FROM blacklist WHERE mc_number = ?", (mc_number,))
+                is_blacklisted = cursor.fetchone()[0]
 
-        cc_table.insert('', 'end', values=(mc_number, carrier_name, phone_number, homebase_zip, equip_length,
-                                           equip_type, insurance_amount, role, hazmat, us_citizen,
-                                           f"{average_rating:.2f}"), tags=(tag,))
-        cc_table.tag_configure('red', foreground='red')
+                # Set a tag for each row based on the blacklist condition
+                tag = 'red' if is_blacklisted else ''
 
-# Button to trigger the search
+                cc_table.insert('', 'end', values=(mc_number, carrier_name, phone_number, homebase_zip, equip_length,
+                                                   equip_type, insurance_amount, role, hazmat, us_citizen,
+                                                   f"{average_rating:.2f}"), tags=(tag,))
+                cc_table.tag_configure('red', foreground='red')
+
+    elif selected_option == "Zip Code ('zipcode:miles')":
+        cc_table.delete(*cc_table.get_children())
+        warning_label.config(text="Please allow up to 30 seconds...", fg="blue")
+        warning_label.grid(column=4, row=0, padx=5, pady=5, sticky='w')
+        search_values = search_query.split(':')
+
+        # Extract zipcode and miles
+        zipcode = search_values[0].strip()
+        miles = search_values[1].strip() if len(search_values) > 1 else "50"
+
+        # Call find_zip_codes and wait for 20 seconds
+        found_zips = zip_search.find_zip_codes(zipcode, miles)
+        cc_table.after(20000, lambda: search_table(found_zips))
+
+        def search_table(zips):
+            zip_list = found_zips.split(',')
+
+            for zip_code in zip_list:
+                cursor.execute('SELECT * FROM carrier_info WHERE lower(homebase_zip) LIKE ?', ('%' + zip_code.strip() + '%',))
+
+                data = cursor.fetchall()
+
+                data.sort(key=lambda x: x[-1], reverse=True)
+
+                # Repopulate the GUI table with the fetched data
+                for row in data:
+                    (mc_number, carrier_name, phone_number, homebase_zip, equip_length, equip_type, insurance_amount, role,
+                     hazmat,
+                     us_citizen, average_rating) = row
+
+                    # Check if average_rating is None and provide a default value
+                    average_rating = average_rating if average_rating is not None else 0.0
+
+                    # Check if mc_number is in the blacklist
+                    cursor.execute("SELECT COUNT(*) FROM blacklist WHERE mc_number = ?", (mc_number,))
+                    is_blacklisted = cursor.fetchone()[0]
+
+                    # Set a tag for each row based on the blacklist condition
+                    tag = 'red' if is_blacklisted else ''
+
+                    cc_table.insert('', 'end', values=(mc_number, carrier_name, phone_number, homebase_zip, equip_length,
+                                                       equip_type, insurance_amount, role, hazmat, us_citizen,
+                                                       f"{average_rating:.2f}"), tags=(tag,))
+                    cc_table.tag_configure('red', foreground='red')
+
+                clear_label_text()
+
+    elif selected_option == "Insurance ('amount')":
+        search_query_value = ''.join(filter(str.isdigit, search_query))
+        cursor.execute("SELECT * FROM carrier_info WHERE CAST(REPLACE(REPLACE(insurance_amount, ',', ''), '$', '') AS INTEGER) >= CAST(? AS INTEGER)", (search_query_value,))
+
+        data = cursor.fetchall()
+
+        # Clear existing entries in the table
+        cc_table.delete(*cc_table.get_children())
+
+        # Sort the data by Rating (average_rating)
+        data.sort(key=lambda x: x[-1], reverse=True)
+
+        # Repopulate the GUI table with the fetched data
+        for row in data:
+            (mc_number, carrier_name, phone_number, homebase_zip, equip_length, equip_type, insurance_amount, role,
+             hazmat,
+             us_citizen, average_rating) = row
+
+            # Check if average_rating is None and provide a default value
+            average_rating = average_rating if average_rating is not None else 0.0
+
+            # Check if mc_number is in the blacklist
+            cursor.execute("SELECT COUNT(*) FROM blacklist WHERE mc_number = ?", (mc_number,))
+            is_blacklisted = cursor.fetchone()[0]
+
+            # Set a tag for each row based on the blacklist condition
+            tag = 'red' if is_blacklisted else ''
+
+            cc_table.insert('', 'end', values=(mc_number, carrier_name, phone_number, homebase_zip, equip_length,
+                                               equip_type, insurance_amount, role, hazmat, us_citizen,
+                                               f"{average_rating:.2f}"), tags=(tag,))
+            cc_table.tag_configure('red', foreground='red')
+
 def on_enter(event):
     search_carrier()
-    # update_carrier_table()
+
 search_entry.bind('<Return>', on_enter)
 search_button.bind('<Return>', on_enter)
 
-# Display Carrier Profile
-# Bind the name column to the pop-up window function
-# def show_carrier_profile(filename):
-#     with open(filename, 'r') as textfile:
-#         contents = textfile.read()
-#     messagebox.showinfo("Carrier Profile", contents)
 
-# cc_table.tag_bind('Carrier Name', '<Button-1>', show_carrier_profile)
-update_carrier_table()
-
-
-#Carrier Rating Table------------------------------
+#Carrier Rating Table----------------------------------
 rating_table_height = 10
 
 Rating_Columns = ['Pro #', 'English', 'Communication', 'Reachability', 'Punctuality', 'MacroPoint', 'Blacklist', 'Total Rating']
@@ -869,8 +1080,35 @@ def update_rating_table(mc_number):
                                                macropoint, blacklist, f"{total_rating:.2f}"), tags=(tag,))
         rating_table.tag_configure('red', foreground='red')
 
-# Bind the function to the event of selecting a row in cc_table
-cc_table.bind('<ButtonRelease-1>', lambda event: update_rating_table(cc_table.item(cc_table.selection())['values'][0]))
+
+cc_table.bind('<ButtonRelease-1>', lambda event: (update_rating_table(cc_table.item(cc_table.selection())['values'][0]), update_note_table(cc_table.item(cc_table.selection())['values'][0])))
+
+#Carrier Note Window--------------------------------------
+note_table = tk.Text(CarrierCloud_tab, wrap=tk.WORD, width=30, font='Calibri')
+note_table.grid(column=1, row=1, sticky=(tk.N, tk.S, tk.W, tk.E))
+def update_note_table(mc_number):
+    note_table.delete("1.0", tk.END)
+
+    cursor.execute(''' SELECT note FROM carrier_notes WHERE mc_number = ?''', (mc_number,))
+
+    data = cursor.fetchall()
+
+    if data and data[0]:
+        # Assuming the 'note' column is the second column in the result
+        notes = data[0][0]  # Access the first column of the first row
+        note_table.insert(tk.END, notes)
+
+def save_notes(mc_number):
+    # Get the text from the Text widget
+    notes_text = note_table.get("1.0", tk.END)
+
+    # Update or insert the notes into the database
+    cursor.execute("INSERT OR REPLACE INTO carrier_notes (mc_number, note) VALUES (?, ?)", (mc_number, notes_text))
+    conn.commit()
+
+# Create a button that triggers the save_notes function
+save_notes_button = tk.Button(CarrierCloud_tab, text="Save Notes", command=lambda: save_notes(cc_table.item(cc_table.selection())['values'][0]))
+save_notes_button.grid(column=1, row=0, padx=5, pady=5)
 
 # Bind the function to the <Configure> event of cc_table for proportional width
 def update_rating_table_width(event):
@@ -882,36 +1120,13 @@ def update_rating_table_width(event):
 cc_table.bind('<Configure>', update_rating_table_width)
 
 
-# Carrier Profile Index------------------------------
-# cpi_tab = ttk.Frame(tab_control)
-# tab_control.add(cpi_tab, text='Carrier Profile Index')
-# cpi_columns = ["Name", "Date Modified"]
-# cpi_treeview = ttk.Treeview(cpi_tab, columns=cpi_columns, show='headings' )
-#
-# def show_files():
-#     folder_path = profiles
-#     files = os.listdir(folder_path)
-#     for file in files:
-#         file_path = os.path.join(folder_path, file)
-#         mod_time = os.path.getmtime(file_path)
-#         cpi_treeview.insert("", "end", values=(file, mod_time))
-#
-# # add columns to the treeview
-# cpi_treeview.heading("Name", text="Name")
-# cpi_treeview.heading("Date Modified", text="Date Modified")
-#
-# # display files in the treeview
-# show_files()
-#
-# # pack the treeview in the "Index" tab
-# cpi_treeview.pack(fill=tk.BOTH, expand=True)
 
 # FINDER BOT TAB #######################################################################################################
 finderbot_tab = ttk.Frame(tab_control)
 tab_control.add(finderbot_tab, text='Finder Bot')
 
 
-# FINDER BOT############################################################################################################
+# FINDER BOT--------------------------------
 def FinderBot_Scraper3():
     # Read in list of URLs from CSV file
     urls_df = pd.read_csv("C:/Users/danie/OneDrive/Desktop/FinderBot/urls.csv")
@@ -967,7 +1182,6 @@ def FinderBot_Scraper3():
 
     df = pd.DataFrame(emails, columns=["Email"])
     df.to_csv('C:/Users/danie/OneDrive/Desktop/FinderBot/FoundEmails.csv', index=False)
-
 
 keyword_label = ttk.Label(finderbot_tab, text="Keyword/Industry Type:")
 keyword_entry = ttk.Entry(finderbot_tab)
